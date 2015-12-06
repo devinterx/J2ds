@@ -11,6 +11,7 @@ var j2ds = {
  dom : {},
  now : 0,
  dt : 0,
+ stopAll : 0,
  frameLimit : 60,
  sceneStartTime : 0,
  sceneSkipTime : 0,
@@ -18,9 +19,9 @@ var j2ds = {
  ready : false,
  window : window,
 
- getInfo : false,
+ getInfo : false, // Определена
  getScene : function () { return j2ds.scene; },
- //getDevice() - уже определена
+ getDevice : false, // Jпределена
  getLayers : function () { return j2ds.layers; },
  getTextureManager : function () { return j2ds.scene.texture; },
  getIO : function () { return j2ds.input; },
@@ -31,7 +32,7 @@ var j2ds = {
 j2ds.getInfo = function () {
 	return {
 	 'name' : 'j2Ds',
-	 'version' : '0.1.1',
+	 'version' : '0.3.0',
 	 'site' : 'https://github.com/SkanerSoft/J2ds',
 	 'info' : 'j2Ds - HTML5 2D Game Engine',
 	 'author' : 'Skaner'
@@ -58,6 +59,9 @@ j2ds.dom.goURL = function (_url) {
 	document.location.href = _url;
 };
 
+j2ds.dom.reloadURL = function () {
+	document.location.href = document.location.href;
+};
 
 
 
@@ -101,7 +105,6 @@ j2ds.getDevice = function() {
 	return o;
 };
 
-// старт игры
 j2ds.start = function(_engine, _frameLimit) {
  j2ds.engine = _engine || function() { document.body.innerHTML = 'Пожалуйста, инициализируйте игровую функцию!'; };
  j2ds.frameLimit = _frameLimit || 60;
@@ -116,21 +119,26 @@ j2ds.setActiveEngine = function(_engine) {
 	j2ds.engine = _engine;
 };
 
-j2ds.gameEngine = function(){
+j2ds.gameEngine = function() {
  j2ds.now = Date.now();
  setTimeout(function () {
-  j2ds.input.upd();
-  j2ds.dt = (j2ds.now - j2ds.lastTime) / 100.0;
-  if (j2ds.dt > j2ds.sceneSkipTime) {
-   j2ds.dt = 0;
+  if (!j2ds.stopAll) {
+   j2ds.input.upd();
+   j2ds.dt = (j2ds.now - j2ds.lastTime) / 100.0;
+   if (j2ds.dt > j2ds.sceneSkipTime/2) {
+    j2ds.dt = 0;
+   }
+   j2ds.sceneStartTime = j2ds.now;
+   j2ds.engine();
+   j2ds.lastTime = j2ds.now;
+   j2ds.input.keyPress = [];
+   j2ds.input.keyUp = [];
+   j2ds.input.mousePress = [];
+   j2ds.input.mouseUp = [];
+   j2ds.input.mouseWheel = 0;
+   nextJ2dsGameStep(j2ds.gameEngine);   
   }
-  j2ds.sceneStartTime = j2ds.now;
-  j2ds.engine();
-  j2ds.lastTime = j2ds.now;
-  j2ds.input.keyPress = [];
-  j2ds.input.keyUp = [];
-  nextJ2dsGameStep(j2ds.gameEngine);
- }, (j2ds.frameLimit < 60 ? j2ds.sceneSkipTime : 0)); 
+ }, (j2ds.frameLimit < 60 ? j2ds.sceneSkipTime : 0));
 };
 
 var nextJ2dsGameStep = (function() {
@@ -163,24 +171,33 @@ j2ds.input = {
  x : 0,
  y : 0,
  abs : {x : 0, y : 0},
- lClick : false,
- mClick : false,
- rClick : false,
- touch : false,
  keyDown : [],
  keyPress : [],
  keyPressed : [],
  keyUp : [],
  keyUped : false,
+ mouseDown : [],
+ mousePress : [],
+ mousePressed : [],
+ mouseUp : [],
+ mouseUpped : false,
+ mouseWheel : 0,
  canceled : false,
  body : false,
  anyKey : false,
+ anyMouse : false,
  writeMode : false,
  displayCursor : '',
  visible : true
 };
 
 // Константы клавиш
+
+j2ds.input.mKey = {
+ 'LEFT' : 1,
+ 'MIDDLE' : 2,
+ 'RIGHT' : 3
+};
 
 j2ds.input.jKey = {
  'LEFT'      : 37,
@@ -327,20 +344,17 @@ j2ds.input.keyEvent = function(e) {
  return false;
 };
 
-//! системная
 j2ds.input.cancel = function(_id) {
  if (!_id) {
   j2ds.input.canceled = true;
-  j2ds.input.falseInput();
   j2ds.input.keyDown = [];
+  j2ds.input.mouseDown = [];
  }
  else {
   j2ds.input.keyDown[j2ds.input.jKey[_id]] = false;
  }
 };
 
-//! системная
-// Вернет true, если мышь наxодится над объектом
 j2ds.input.onNode = function(_id) {
  if (!_id.layer.visible) return false;
  return (this.pos.x > _id.pos.x && this.pos.x < _id.pos.x+_id.size.x) &&
@@ -356,50 +370,60 @@ j2ds.input.upd = function() {
  this.pos.y = j2ds.scene.view.y + this.y;
 };
 
-
-j2ds.input.cursorPosition = function(e) {
- if (!j2ds.input.touch) {
-  if (document.all) {
-   var x = e.x + document.body.scrollLeft,
-   y = e.y + document.body.scrollTop;
-  } else {
-   var x = e.pageX, // Координата X курсора
-   y = e.pageY;// Координата Y курсора
-  }
-  j2ds.input.abs.x = x;
-  j2ds.input.abs.y = y;
- }
+j2ds.input.onMove = function(e) {
+ j2ds.input.abs.x = e.pageX;
+ j2ds.input.abs.y = e.pageY;
 };
 
+j2ds.input.isMouseDown = function(_code) {
+ return this.mouseDown[this.mKey[_code]];
+};
 
-j2ds.input.onClick = function(e) {
+j2ds.input.isMousePress = function(_code) {
+ return this.mousePress[this.mKey[_code]];
+};
+
+j2ds.input.isMouseUp = function(_code) {
+ return this.mouseUp[this.mKey[_code]];
+};
+
+j2ds.input.isMouseWheel = function(_code) {
+ return (_code == 'UP' && this.mouseWheel > 0) ||
+        (_code == 'DOWN' && this.mouseWheel < 0)
+};
+
+j2ds.input.onMouseWheel = function (e) {
+	this.mouseWheel = ((e.wheelDelta) ? e.wheelDelta : -e.detail);
+	e.preventDefault();
+	return false;
+};
+
+j2ds.input.onMouseEvent = function(e) {
  if (!e.which && e.button) {
   if (e.button & 1) e.which = 1;
   else if (e.button & 4) e.which = 2;
        else if (e.button & 2) e.which = 3;
  }
- j2ds.input.lClick = (e.which== 1?true:false)&&(!j2ds.input.canceled);
- j2ds.input.mClick = (e.which== 2?true:false)&&(!j2ds.input.canceled);
- j2ds.input.rClick = (e.which== 3?true:false)&&(!j2ds.input.canceled);
+
+ if (e.type == 'mousedown') {
+  if (!j2ds.input.mousePressed[e.which]) {
+   j2ds.input.mousePress[e.which] = true;
+   j2ds.input.mousePressed[e.which] = true;
+  }
+ } else if (e.type == 'mouseup') {
+  if (j2ds.input.mousePressed[e.which]) {
+   j2ds.input.mousePress[e.which] = false;
+   j2ds.input.mousePressed[e.which] = false;
+   j2ds.input.mouseUp[e.which] = true;
+   j2ds.input.mouseUped = true;
+  }
+ }
+
+ j2ds.input.mouseDown[e.which] = (e.type == 'mousedown') && (!j2ds.input.canceled);
+
  j2ds.window.focus();
  e.preventDefault();
  return false;
-};
-
-j2ds.input.onTouch = function(e) {
- j2ds.input.abs.x = e.touches[0].pageX;
- j2ds.input.abs.y = e.touches[0].pageY;
- j2ds.input.lClick = true&&(!j2ds.input.canceled);
- j2ds.input.touch = true&&(!j2ds.input.canceled);
- j2ds.window.focus();
- e.preventDefault();
- return false;
-};
-
-j2ds.input.falseInput = function() {
- j2ds.input.lClick = false;
- j2ds.input.mClick = false;
- j2ds.input.rClick = false;
 };
 
 j2ds.input.setCursorImage = function (_curImg) {
@@ -422,18 +446,40 @@ j2ds.input.isVisible = function () {
 
 j2ds.input.init = function() {
  j2ds.window.focus();
- j2ds.window.ontouchstart = j2ds.input.onTouch;
- j2ds.window.ontouchmove = j2ds.input.onTouch;
- j2ds.window.ontouchend = function() { j2ds.input.canceled = false; j2ds.input.falseInput(); };
- j2ds.window.oncontextmenu = function() { return false; }
+ j2ds.window.oncontextmenu = function() { return false; };
  j2ds.window.onselectstart = j2ds.window.oncontextmenu;
  j2ds.window.ondragstart = j2ds.window.oncontextmenu;
- j2ds.window.onmousedown = j2ds.input.onClick;
- j2ds.window.onmouseup = function() { j2ds.input.canceled = false; j2ds.input.falseInput(); };
- j2ds.window.onmousemove = j2ds.input.cursorPosition;
+ j2ds.window.onmousedown = j2ds.input.onMouseEvent;
+ j2ds.window.onmouseup = function(e) { j2ds.input.canceled = false; j2ds.input.onMouseEvent(e); };
+ j2ds.window.onmousemove = function(e) { j2ds.input.onMove(e); };
  j2ds.window.onkeydown = function(e) { j2ds.input.keyEvent(e); };
  j2ds.window.onkeyup = function(e) { j2ds.input.canceled = false; j2ds.input.keyEvent(e); };
  j2ds.window.onkeypress = function(e) { j2ds.input.keyEvent(e); };
+ j2ds.window.onmousewheel = function(e) { j2ds.input.onMouseWheel(e); };
+
+ if (j2ds.window.addEventListener) {
+  j2ds.window.addEventListener("DOMMouseScroll", function(e) {
+  	j2ds.input.onMouseWheel(e);
+  }, false);
+ }
+
+ j2ds.window.onblur = function () {
+  if (j2ds.stopAll == 0) {
+   j2ds.stopAll = 1;
+   j2ds.onEvent('scene:deactivate');
+  }
+ };
+
+ j2ds.window.onfocus = function () {
+  if (j2ds.stopAll == 1) {
+   j2ds.stopAll = 0;
+   nextJ2dsGameStep(j2ds.gameEngine);
+   j2ds.onEvent('scene:activate');
+   j2ds.input.cancel();
+  }
+ };
+
+
 };
 
 
@@ -444,12 +490,18 @@ j2ds.input.init = function() {
 
 /*--------------- События ----------------*/
 j2ds.events = {
+ 'scene:deactivate' : [],
+ 'scene:activate' : [],
+
  'scene:beforeInit' : [],
  'scene:afterInit' : [],
  'scene:beforeStart' : [],
  'scene:afterStart' : [],
- 'writeMode:keyPress' : [],
+
  'scene:changedGameState' : [],
+
+ 'writeMode:keyPress' : [],
+
  'dom:loaded' : []
 };
 
@@ -496,8 +548,8 @@ j2ds.layers.add = function (_id, _index) {
 	o.context.shadowColor = 'rgba(0,0,0,0)';
  o.canvas.style.zIndex = 1000+_index;
  o.canvas.style.position = 'fixed';
- o.canvas.style.left = '0px';
- o.canvas.style.top = '0px';
+ o.canvas.style.left = '0';
+ o.canvas.style.top = '0';
  o.canvas.id = _id;
  o.alpha = 1;
  o.angle = 0;
@@ -587,6 +639,41 @@ j2ds.scene.start = function (_engine, _frameLimit) {
 
 j2ds.scene.fullScreen = function(_true) {
  var layer;
+ var tmpCanvas = document.createElement('canvas'); // Нужны для копирования содержимого
+ var tmpContext = tmpCanvas.getContext('2d');      // При изменении размера
+ if (_true) {
+  j2ds.scene.origWidth = j2ds.scene.width;
+  j2ds.scene.origHeight = j2ds.scene.height;
+  j2ds.scene.width = j2ds.getDevice().width;
+  j2ds.scene.height = j2ds.getDevice().height;
+  for (var i in j2ds.layers.list)
+  {
+   layer = j2ds.layers.list[i];
+   tmpCanvas.width = layer.width;
+   tmpCanvas.height = layer.height;
+   tmpContext.drawImage(layer.canvas, 0, 0);
+   layer.canvas.width = j2ds.scene.width;
+   layer.canvas.height = j2ds.scene.height;
+   layer.width = j2ds.scene.width;
+   layer.height = j2ds.scene.height;
+   layer.context.drawImage(tmpCanvas, 0, 0, layer.width, layer.height);
+  }
+ } else {
+  j2ds.scene.width = j2ds.scene.origWidth;
+  j2ds.scene.height = j2ds.scene.origHeight;
+  for (var i in j2ds.layers.list)
+  {
+   layer = j2ds.layers.list[i];
+   layer.width = j2ds.scene.origWidth;
+   layer.height = j2ds.scene.origHeight;
+   layer.canvas.width = j2ds.scene.origWidth;
+   layer.canvas.height = j2ds.scene.origHeight;
+  }
+ }
+};
+
+j2ds.scene.fullScale = function(_true) {
+ var layer;
  if (_true) {
   for (var i in j2ds.layers.list)
   {
@@ -638,6 +725,9 @@ j2ds.scene.init = function(_w, _h) {
 
 	j2ds.scene.width = _w;
 	j2ds.scene.height = _h;
+
+	j2ds.scene.origWidth = _w;
+	j2ds.scene.origHeight = _h;
 
  j2ds.layers.add('sceneNode', 0);
 
@@ -734,12 +824,16 @@ j2ds.scene.BaseNode.prototype.moveTo = function(_to, _t) {
 };
 
 j2ds.scene.BaseNode.prototype.setPosition = function(_pos) {
- this.pos = j2ds.vector.vec2df(_pos.x-Math.ceil(this.size.x/2), _pos.y-Math.ceil(this.size.y/2) );
+ if (_pos) {
+  this.pos = j2ds.vector.vec2df(_pos.x-Math.ceil(this.size.x/2), _pos.y-Math.ceil(this.size.y/2) );
+ } else {
+  return this.pos;
+ }
 };
 
 j2ds.scene.BaseNode.prototype.move = function(_pos) {
- this.pos.x+= _pos.x;
- this.pos.y+= _pos.y;
+  this.pos.x+= _pos.x;
+  this.pos.y+= _pos.y;
 };
 
 j2ds.scene.BaseNode.prototype.getPosition = function() {
@@ -747,7 +841,11 @@ j2ds.scene.BaseNode.prototype.getPosition = function() {
 };
 
 j2ds.scene.BaseNode.prototype.setSize = function(_size) {
- this.size = _size;
+ if (_size) {
+  this.size = _size;
+ } else {
+ 	return this.size;
+ }
 };
 
 j2ds.scene.BaseNode.prototype.getSize = function() {
@@ -852,6 +950,7 @@ j2ds.scene.BaseNode.prototype.moveDir = function(_speed) {
 
 j2ds.scene.BaseNode.prototype.drawBox = function() {
  var context = this.layer.context;
+ context.lineWidth = 2;
  context.strokeStyle = 'black';
 
  context.beginPath();
@@ -892,8 +991,11 @@ j2ds.scene.TextNode = function(_pos, _text, _sizePx, _color, _family, _width, _c
  this.hAlign = 'left';
  this.color = _color ? _color : 'black';
 
- this.family = _family ? _family : 'sans-serif';
- this.sizePx = _sizePx;
+ this.family = _family ? _family : 'serif';
+ this.sizePx = _sizePx ? _sizePx : 20;
+
+ this.box.offset.y = j2ds.math.toInt(this.sizePx*0.26);
+ this.box.size.y = -j2ds.math.toInt(this.sizePx*0.26); 
 
  this.lineWidth = _width ? _width : 0;
  this.colorL = _colorL ? _colorL : 'black';
@@ -923,6 +1025,9 @@ j2ds.scene.TextNode.prototype.setSize = function (_sizePx) {
  this.font = this.sizePx+'px '+ this.family;
  j2ds.scene.context.font = this.font;
 
+ this.box.offset.y = j2ds.math.toInt(this.sizePx*0.26);
+ this.box.size.y = -j2ds.math.toInt(this.sizePx*0.26); 
+
  for (var i = 0, len = this.lines.length; i < len; i += 1) {
   this.maxWidth = (this.maxWidth < j2ds.scene.context.measureText(this.lines[i]).width ?
                                    j2ds.scene.context.measureText(this.lines[i]).width :
@@ -936,7 +1041,7 @@ j2ds.scene.TextNode.prototype.getSize = function () {
 	return this.sizePx;
 };
 
-j2ds.scene.TextNode.prototype.drawSimpleText = function (_text, _color, _colorL, _pos) {
+j2ds.scene.TextNode.prototype.drawSimpleText = function (_text, _pos, _color, _colorL) {
  var context = this.layer.context;
  context.fillStyle = _color ? _color : this.color;
  context.textAlign = this.hAlign;
@@ -969,6 +1074,9 @@ j2ds.scene.TextNode.prototype.setText = function (_text) {
  this.lines = _text.split("\n");
 
  j2ds.scene.context.font = this.font;
+
+ this.box.offset.y = j2ds.math.toInt(this.sizePx*0.26);
+ this.box.size.y = -j2ds.math.toInt(this.sizePx*0.26); 
 
  for (var i = 0, len = this.lines.length; i < len; i += 1) {
   this.maxWidth = (this.maxWidth < j2ds.scene.context.measureText(this.lines[i]).width ?
@@ -1052,6 +1160,7 @@ j2ds.scene.CircleNode.prototype.draw = function() {
    var tmpAlpha = context.globalAlpha;
    context.globalAlpha = this.alpha;
   }
+  context.lineWidth = 0;
   context.fillStyle = this.color;
 
   context.beginPath();
@@ -1124,6 +1233,8 @@ j2ds.scene.LineNode.prototype.draw = function() {
    context.fill();
   }
 
+  context.lineWidth = 0;
+
   if (this.alpha != 1) {
    context.globalAlpha = tmpAlpha;
   }
@@ -1171,6 +1282,7 @@ j2ds.scene.RectNode.prototype.draw = function() {
   }
 
   context.fillStyle = this.color;
+  context.lineWidth = 0;
 
   context.fillRect(
   this.pos.x-j2ds.scene.view.x,
@@ -1315,6 +1427,8 @@ j2ds.scene.SpriteNode.prototype.drawFrame = function(_frame) {
    var tmpAlpha = context.globalAlpha;
    context.globalAlpha = this.alpha;
   }
+
+  context.lineWidth = 0;
 
   if (this.angle || this.flip.x || this.flip.y)
   {
